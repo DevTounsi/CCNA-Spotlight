@@ -22,12 +22,42 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
     QLabel, QScrollArea, QFrame, QPushButton, QSlider, QDialog
 )
-from PyQt6.QtCore import Qt, QTimer, QEvent
+from PyQt6.QtCore import Qt, QTimer, QEvent, QPoint
 from PyQt6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut
 
 # Import our search engine
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from scripts.search_engine import CCNAEngine
+
+
+class DragHandle(QLabel):
+    """Poignée discrète pour glisser/déplacer la barre où l'on veut sur l'écran."""
+    def __init__(self, parent_window):
+        super().__init__("⠿")
+        self.parent_window = parent_window
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+        self.setToolTip("Cliquer et glisser pour déplacer la barre")
+        self.setStyleSheet("""
+            QLabel {
+                color: #52525b;
+                font-size: 13px;
+                padding: 0 4px;
+                font-weight: bold;
+            }
+            QLabel:hover {
+                color: #a1a1aa;
+            }
+        """)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.parent_window._drag_pos = event.globalPosition().toPoint() - self.parent_window.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.MouseButton.LeftButton and hasattr(self.parent_window, '_drag_pos'):
+            self.parent_window.move(event.globalPosition().toPoint() - self.parent_window._drag_pos)
+        super().mouseMoveEvent(event)
 
 
 class SearchLineEdit(QLineEdit):
@@ -38,6 +68,7 @@ class SearchLineEdit(QLineEdit):
     def mousePressEvent(self, event):
         was_focused = self.hasFocus()
         super().mousePressEvent(event)
+        # Si on n'avait pas le focus avant le clic, on sélectionne tout pour écraser direct
         if not was_focused:
             self.selectAll()
 
@@ -223,14 +254,16 @@ class ResultCard(QFrame):
 
 class CCNAMiniApp(QWidget):
     """
-    Fenêtre Spotlight ultra-discrète :
-    - À l'ouverture : uniquement la barre de recherche (hauteur minimale ~45px).
-    - Dès qu'on tape : s'agrandit pour afficher le menu déroulant des réponses.
-    - Quand on efface : se replie immédiatement.
-    - Au retour sur l'app : sélectionne tout le texte tapé pour l'écraser instantanément.
+    Barre de recherche flottante sans bordure système (Frameless Spotlight) :
+    - ZÉRO barre supérieure Windows : uniquement la barre de recherche.
+    - Hauteur minimale à l'ouverture (~46px).
+    - Dès qu'on tape : s'agrandit vers le bas en mini-menu déroulant.
+    - Quand on efface : se replie instantanément.
+    - Poignée '⠿' et glisser-déplacer pour bouger la barre n'importe où.
+    - Ctrl + F : ferme et quitte l'application.
     """
-    COLLAPSED_HEIGHT = 46
-    EXPANDED_HEIGHT = 340
+    COLLAPSED_HEIGHT = 44
+    EXPANDED_HEIGHT = 330
     DEFAULT_WIDTH = 440
 
     def __init__(self):
@@ -243,6 +276,9 @@ class CCNAMiniApp(QWidget):
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         
+        self.is_pinned = True
+        self._drag_pos = None
+
         self.init_ui()
         self.setup_shortcuts()
 
@@ -250,14 +286,30 @@ class CCNAMiniApp(QWidget):
         self.setWindowTitle("CCNA")
         self.setMinimumWidth(320)
         
-        # Toujours au premier plan par défaut
-        self.is_pinned = True
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        # SUPPRESSION COMPLÈTE DE LA BARRE DU DESSUS (Frameless) + Toujours au premier plan
+        self.setWindowFlags(
+            Qt.WindowType.Window |
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint
+        )
+        # Fond translucide pour coins arrondis propres
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         
-        # Style sombre minimaliste
-        self.setStyleSheet("""
-            QWidget {
+        # Layout principal de la fenêtre
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        # Conteneur principal stylisé avec bordure et fond sombre
+        self.main_container = QFrame()
+        self.main_container.setObjectName("mainContainer")
+        self.main_container.setStyleSheet("""
+            QFrame#mainContainer {
                 background-color: #09090b;
+                border: 1px solid #27272a;
+                border-radius: 8px;
+            }
+            QWidget {
                 color: #f4f4f5;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
@@ -280,20 +332,24 @@ class CCNAMiniApp(QWidget):
             }
         """)
 
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(6, 6, 6, 6)
-        self.main_layout.setSpacing(4)
+        container_layout = QVBoxLayout(self.main_container)
+        container_layout.setContentsMargins(6, 6, 6, 6)
+        container_layout.setSpacing(4)
 
         # Ligne unique de recherche + outils (hauteur compacte)
         search_row = QHBoxLayout()
         search_row.setContentsMargins(0, 0, 0, 0)
         search_row.setSpacing(5)
 
+        # Poignée de déplacement (cliquer-glisser pour bouger la barre)
+        self.drag_handle = DragHandle(self)
+        search_row.addWidget(self.drag_handle)
+
         # Barre de recherche avec écrasement automatique
         self.search_bar = SearchLineEdit(self)
         self.search_bar.setPlaceholderText("Tapez les mots de la question...")
         self.search_bar.setClearButtonEnabled(True)
-        self.search_bar.setFixedHeight(30)
+        self.search_bar.setFixedHeight(28)
         self.search_bar.setStyleSheet("""
             QLineEdit {
                 background-color: #18181b;
@@ -338,7 +394,7 @@ class CCNAMiniApp(QWidget):
         # Bouton Pin (Toujours au premier plan)
         self.btn_pin = QPushButton("📌")
         self.btn_pin.setToolTip("Garder au premier plan")
-        self.btn_pin.setFixedSize(26, 26)
+        self.btn_pin.setFixedSize(24, 24)
         self.btn_pin.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_pin.setStyleSheet("""
             QPushButton {
@@ -352,7 +408,7 @@ class CCNAMiniApp(QWidget):
         self.btn_pin.clicked.connect(self.toggle_pin)
         search_row.addWidget(self.btn_pin)
 
-        self.main_layout.addLayout(search_row)
+        container_layout.addLayout(search_row)
 
         # Zone du menu déroulant des résultats (masquée au démarrage !)
         self.scroll_area = QScrollArea()
@@ -367,7 +423,9 @@ class CCNAMiniApp(QWidget):
         self.results_layout.addStretch()
 
         self.scroll_area.setWidget(self.results_container)
-        self.main_layout.addWidget(self.scroll_area)
+        container_layout.addWidget(self.scroll_area)
+
+        root_layout.addWidget(self.main_container)
 
         # Par défaut au démarrage : le menu déroulant est masqué et la fenêtre est compacte !
         self.scroll_area.hide()
@@ -377,6 +435,24 @@ class CCNAMiniApp(QWidget):
         self.resize(self.DEFAULT_WIDTH, self.COLLAPSED_HEIGHT)
         self.search_bar.setFocus()
 
+    def mousePressEvent(self, event):
+        """Permet de déplacer la fenêtre en cliquant n'importe où sur son cadre."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+        self.search_bar.setFocus()
+        self.search_bar.selectAll()
+
+    def mouseMoveEvent(self, event):
+        """Déplacement fluide lors du glisser-déposer."""
+        if event.buttons() == Qt.MouseButton.LeftButton and self._drag_pos is not None:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
+
     def changeEvent(self, event):
         """Détecte quand la fenêtre redevient active (clic de retour depuis une autre app)."""
         if event.type() == QEvent.Type.ActivationChange:
@@ -384,12 +460,6 @@ class CCNAMiniApp(QWidget):
                 self.search_bar.setFocus()
                 QTimer.singleShot(0, self.search_bar.selectAll)
         super().changeEvent(event)
-
-    def mousePressEvent(self, event):
-        """Un clic n'importe où dans la fenêtre remet le focus et sélectionne le texte."""
-        super().mousePressEvent(event)
-        self.search_bar.setFocus()
-        self.search_bar.selectAll()
 
     def setup_shortcuts(self):
         # Touche Échap pour effacer et replier
@@ -411,12 +481,13 @@ class CCNAMiniApp(QWidget):
 
     def toggle_pin(self):
         self.is_pinned = not self.is_pinned
+        flags = Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
         if self.is_pinned:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            flags |= Qt.WindowType.WindowStaysOnTopHint
             self.btn_pin.setStyleSheet("QPushButton { background-color: #18181b; border: 1px solid #10b981; border-radius: 4px; }")
         else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
             self.btn_pin.setStyleSheet("QPushButton { background-color: #18181b; border: 1px solid #52525b; border-radius: 4px; }")
+        self.setWindowFlags(flags)
         self.show()
 
     def clear_search(self):
