@@ -44,7 +44,7 @@
 ## 📥 Téléchargement & Installation
 
 ### Option 1 : Télécharger l'Exécutable (Recommandé - Zéro installation)
-1. Rendez-vous dans l'onglet [**Releases**](https://github.com/) du dépôt GitHub.
+1. Rendez-vous dans l'onglet [**Releases**](https://github.com/DevTounsi/CCNA-Spotlight/releases) du dépôt GitHub.
 2. Téléchargez le fichier **`CCNA-Spotlight.exe`**.
 3. Double-cliquez dessus pour lancer l'application !
    > **Astuce Épinglage Windows** : Faites un **clic droit** sur `CCNA-Spotlight.exe` ➔ **« Épingler à la barre des tâches »** pour y accéder en 1 clic à tout moment.
@@ -59,7 +59,7 @@
 
 ```bash
 # 1. Cloner le dépôt
-git clone https://github.com/votre-nom-utilisateur/CCNA-Spotlight.git
+git clone https://github.com/DevTounsi/CCNA-Spotlight.git
 cd CCNA-Spotlight
 
 # 2. Installer les dépendances
@@ -98,14 +98,13 @@ Elle fonctionne hors-ligne dans n'importe quel navigateur (PC, smartphone, table
 │   └── icon.png              # Logo PNG
 ├── data/
 │   └── ccna1_exam.json       # Base de données des 160 questions/réponses vérifiées
-├── extracted_images/         # 38 schémas et topologies extraits du PDF
+├── extracted_images/         # 34 schémas et topologies extraits
 ├── scripts/
 │   ├── build_dataset.py      # Pipeline d'extraction et vérification du PDF
 │   ├── generate_web_app.py   # Générateur de la SPA web autonome
 │   └── search_engine.py      # Moteur de recherche flou optimisé
 ├── .github/workflows/
 │   └── release.yml           # CI/CD GitHub Actions pour les releases automatisées
-├── CCNA-Spotlight.exe        # Exécutable autonome compilé (prêt pour distribution)
 ├── mini_app.py               # Application PyQt6 principale
 ├── index.html                # Version Web autonome
 ├── build_exe.bat             # Script de compilation locale 1-clic
